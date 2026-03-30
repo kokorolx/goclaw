@@ -134,7 +134,9 @@ func processAnnounceLoop(
 
 		content := buildMergedAnnounceContent(entries, snapshot, r.TeamWorkspace)
 		if allDirect {
-			content += "\n\n[The member already posted the result directly to the chat. Do NOT repeat or rephrase it. Respond with NO_REPLY unless you have NEW information to add (e.g. next steps, follow-up tasks).]"
+			content += "\n\n[The member already posted the result directly to the chat. Do NOT repeat or rephrase their work. " +
+				"However, you SHOULD still create follow-up tasks if your workflow requires it (e.g. code review gate, deployment gate, QA). " +
+				"If you have no follow-up tasks and no new information, respond with NO_REPLY.]"
 		}
 
 		req := agent.RunRequest{
@@ -205,7 +207,11 @@ func processAnnounceLoop(
 		}
 
 		slog.Info("teammate announce: batch processed",
-			"batch_size", len(entries), "session", r.LeadSessionKey)
+			"batch_size", len(entries),
+			"all_direct", allDirect,
+			"channel", r.OrigChannel,
+			"session", r.LeadSessionKey,
+		)
 
 		// Loop back — tryFinish at top will exit when queue is truly empty.
 	}
