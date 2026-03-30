@@ -462,8 +462,13 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 	}
 
 	if len(req.Tools) > 0 {
-		body["tools"] = CleanToolSchemas(p.schemaProviderName(), req.Tools)
-		body["tool_choice"] = "auto"
+		body["tools"] = CleanToolSchemas(p.name, req.Tools)
+		switch req.ToolChoice {
+		case "none", "required":
+			body["tool_choice"] = req.ToolChoice
+		default:
+			body["tool_choice"] = "auto"
+		}
 	}
 
 	// Together returns HTTP 400 on some requests when stream_options is present.
@@ -503,10 +508,14 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 	}
 
 	// reasoning_effort is OpenAI-specific; do not send to third-party OpenAI-compatible APIs.
+	// When thinking/reasoning is enabled, remove temperature — Anthropic requires
+	// temperature=1 (default) when extended thinking is active, and proxies like
+	// LiteLLM forward it verbatim causing 400 errors.
 	if level, ok := req.Options[OptThinkingLevel].(string); ok && level != "" && level != "off" {
 		if openAIModelSupportsReasoningEffort(model) {
 			body[OptReasoningEffort] = level
 		}
+		delete(body, "temperature")
 	}
 
 	// DashScope-specific passthrough keys — never send to other OpenAI-compat hosts.
