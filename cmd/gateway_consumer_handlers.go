@@ -344,12 +344,21 @@ func handleTeammateMessage(
 		if origChatID != "" && outcome.Err == nil && !agent.IsSilentReply(announceContent) {
 			memberAgent := inMeta[tools.MetaToAgent]
 			memberChannel := ""
+			usingFallback := false
 			if deps.ChannelMgr != nil {
 				memberChannel = deps.ChannelMgr.ChannelForAgent(memberAgent)
 			}
 			if memberChannel == "" {
 				memberChannel = origCh
+				usingFallback = true
 			}
+			slog.Info("teammate direct delivery",
+				"member_agent", memberAgent,
+				"channel", memberChannel,
+				"chat_id", origChatID,
+				"fallback", usingFallback,
+				"content_len", len(announceContent),
+			)
 			deps.MsgBus.PublishOutbound(bus.OutboundMessage{
 				Channel:  memberChannel,
 				ChatID:   origChatID,

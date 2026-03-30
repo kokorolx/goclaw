@@ -4,8 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
+
+func memoryTeamFilter(ctx context.Context, nextParam int) (string, []any) {
+	tid := store.MemoryTeamID(ctx)
+	if tid == uuid.Nil {
+		return "", nil
+	}
+	return fmt.Sprintf(" AND (team_id = $%d OR team_id IS NULL)", nextParam), []any{tid}
+}
 
 // Search performs hybrid search (FTS + vector) over memory_chunks.
 // Merges global (user_id IS NULL) + per-user chunks, with user boost.
@@ -97,33 +107,39 @@ func (s *PGMemoryStore) ftsSearch(ctx context.Context, query string, agentID any
 		args = append(args, limit)
 	} else if userID != "" {
 		// fixed params: $1=query, $2=agentID, $3=query, $4=userID
-		tc, tcArgs, _, err := scopeClause(ctx, 5)
+		teamFilter, teamArgs := memoryTeamFilter(ctx, 5)
+		nextParam := 5 + len(teamArgs)
+		tc, tcArgs, _, err := scopeClause(ctx, nextParam)
 		if err != nil {
 			return nil, err
 		}
-		limitN := 5 + len(tcArgs)
+		limitN := nextParam + len(tcArgs)
 		q = fmt.Sprintf(`SELECT path, start_line, end_line, text, user_id,
 				ts_rank(tsv, plainto_tsquery('simple', $1)) AS score
 			FROM memory_chunks
 			WHERE agent_id = $2 AND tsv @@ plainto_tsquery('simple', $3)
-			AND (user_id IS NULL OR user_id = $4)%s
-			ORDER BY score DESC LIMIT $%d`, tc, limitN)
-		args = append([]any{query, agentID, query, userID}, tcArgs...)
+			AND (user_id IS NULL OR user_id = $4)%s%s
+			ORDER BY score DESC LIMIT $%d`, teamFilter, tc, limitN)
+		args = append([]any{query, agentID, query, userID}, teamArgs...)
+		args = append(args, tcArgs...)
 		args = append(args, limit)
 	} else {
 		// fixed params: $1=query, $2=agentID, $3=query
-		tc, tcArgs, _, err := scopeClause(ctx, 4)
+		teamFilter, teamArgs := memoryTeamFilter(ctx, 4)
+		nextParam := 4 + len(teamArgs)
+		tc, tcArgs, _, err := scopeClause(ctx, nextParam)
 		if err != nil {
 			return nil, err
 		}
-		limitN := 4 + len(tcArgs)
+		limitN := nextParam + len(tcArgs)
 		q = fmt.Sprintf(`SELECT path, start_line, end_line, text, user_id,
 				ts_rank(tsv, plainto_tsquery('simple', $1)) AS score
 			FROM memory_chunks
 			WHERE agent_id = $2 AND tsv @@ plainto_tsquery('simple', $3)
-			AND user_id IS NULL%s
-			ORDER BY score DESC LIMIT $%d`, tc, limitN)
-		args = append([]any{query, agentID, query}, tcArgs...)
+			AND user_id IS NULL%s%s
+			ORDER BY score DESC LIMIT $%d`, teamFilter, tc, limitN)
+		args = append([]any{query, agentID, query}, teamArgs...)
+		args = append(args, tcArgs...)
 		args = append(args, limit)
 	}
 
@@ -165,35 +181,41 @@ func (s *PGMemoryStore) vectorSearch(ctx context.Context, embedding []float32, a
 		args = append(args, vecStr, limit)
 	} else if userID != "" {
 		// fixed params: $1=vec, $2=agentID, $3=userID
-		tc, tcArgs, _, err := scopeClause(ctx, 4)
+		teamFilter, teamArgs := memoryTeamFilter(ctx, 4)
+		nextParam := 4 + len(teamArgs)
+		tc, tcArgs, _, err := scopeClause(ctx, nextParam)
 		if err != nil {
 			return nil, err
 		}
-		orderN := 4 + len(tcArgs)
+		orderN := nextParam + len(tcArgs)
 		limitN := orderN + 1
 		q = fmt.Sprintf(`SELECT path, start_line, end_line, text, user_id,
 				1 - (embedding <=> $1::vector) AS score
 			FROM memory_chunks
 			WHERE agent_id = $2 AND embedding IS NOT NULL
-			AND (user_id IS NULL OR user_id = $3)%s
-			ORDER BY embedding <=> $%d::vector LIMIT $%d`, tc, orderN, limitN)
-		args = append([]any{vecStr, agentID, userID}, tcArgs...)
+			AND (user_id IS NULL OR user_id = $3)%s%s
+			ORDER BY embedding <=> $%d::vector LIMIT $%d`, teamFilter, tc, orderN, limitN)
+		args = append([]any{vecStr, agentID, userID}, teamArgs...)
+		args = append(args, tcArgs...)
 		args = append(args, vecStr, limit)
 	} else {
 		// fixed params: $1=vec, $2=agentID
-		tc, tcArgs, _, err := scopeClause(ctx, 3)
+		teamFilter, teamArgs := memoryTeamFilter(ctx, 3)
+		nextParam := 3 + len(teamArgs)
+		tc, tcArgs, _, err := scopeClause(ctx, nextParam)
 		if err != nil {
 			return nil, err
 		}
-		orderN := 3 + len(tcArgs)
+		orderN := nextParam + len(tcArgs)
 		limitN := orderN + 1
 		q = fmt.Sprintf(`SELECT path, start_line, end_line, text, user_id,
 				1 - (embedding <=> $1::vector) AS score
 			FROM memory_chunks
 			WHERE agent_id = $2 AND embedding IS NOT NULL
-			AND user_id IS NULL%s
-			ORDER BY embedding <=> $%d::vector LIMIT $%d`, tc, orderN, limitN)
-		args = append([]any{vecStr, agentID}, tcArgs...)
+			AND user_id IS NULL%s%s
+			ORDER BY embedding <=> $%d::vector LIMIT $%d`, teamFilter, tc, orderN, limitN)
+		args = append([]any{vecStr, agentID}, teamArgs...)
+		args = append(args, tcArgs...)
 		args = append(args, vecStr, limit)
 	}
 
@@ -277,4 +299,3 @@ func hybridMerge(fts, vec []scoredChunk, textWeight, vectorWeight float64, curre
 
 	return results
 }
-
