@@ -368,6 +368,26 @@ func handleTeammateMessage(
 			}
 		}
 
+		// Direct delivery: post the member's result to the origin chat via the
+		// member agent's own channel (so it appears under the correct bot identity).
+		// Falls back to origin channel if the member has no dedicated channel.
+		if origChatID != "" && outcome.Err == nil && !agent.IsSilentReply(announceContent) {
+			memberAgent := inMeta[tools.MetaToAgent]
+			memberChannel := ""
+			if deps.ChannelMgr != nil {
+				memberChannel = deps.ChannelMgr.ChannelForAgent(memberAgent)
+			}
+			if memberChannel == "" {
+				memberChannel = origCh
+			}
+			deps.MsgBus.PublishOutbound(bus.OutboundMessage{
+				Channel:  memberChannel,
+				ChatID:   origChatID,
+				Content:  announceContent,
+				Metadata: outMeta,
+			})
+		}
+
 		// Announce result (or failure) to lead agent via announce queue.
 		// Queue merges concurrent completions into a single batched announce.
 		if origChatID == "" {
@@ -424,12 +444,13 @@ func handleTeammateMessage(
 			announceContent = string([]rune(announceContent)[:50_000]) + "\n[truncated]"
 		}
 
-		// Enqueue result. If we become the processor, run the announce loop.
+		directDelivered := origChatID != "" && outcome.Err == nil && !agent.IsSilentReply(announceContent)
 		entry := announceEntry{
 			MemberAgent:       inMeta[tools.MetaToAgent],
 			MemberDisplayName: inMeta[tools.MetaToAgentDisplay],
 			Content:           announceContent,
 			Media:             announceMedia,
+			DirectDelivered:   directDelivered,
 		}
 		q, isProcessor := enqueueAnnounce(leadSessionKey, entry)
 		if !isProcessor {

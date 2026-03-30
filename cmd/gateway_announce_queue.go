@@ -19,10 +19,11 @@ import (
 
 // announceEntry holds one teammate completion result waiting to be announced.
 type announceEntry struct {
-	MemberAgent        string // agent key (e.g. "researcher")
-	MemberDisplayName  string // display name (e.g. "Nhà Nghiên Cứu"), empty if not set
-	Content            string
-	Media              []agent.MediaResult
+	MemberAgent       string // agent key (e.g. "researcher")
+	MemberDisplayName string // display name (e.g. "Nhà Nghiên Cứu"), empty if not set
+	Content           string
+	Media             []agent.MediaResult
+	DirectDelivered   bool // true when member already posted result to channel directly
 }
 
 // announceQueueState tracks the per-session announce queue.
@@ -123,7 +124,18 @@ func processAnnounceLoop(
 			}
 		}
 
+		allDirect := true
+		for _, e := range entries {
+			if !e.DirectDelivered {
+				allDirect = false
+				break
+			}
+		}
+
 		content := buildMergedAnnounceContent(entries, snapshot, r.TeamWorkspace)
+		if allDirect {
+			content += "\n\n[The member already posted the result directly to the chat. Do NOT repeat or rephrase it. Respond with NO_REPLY unless you have NEW information to add (e.g. next steps, follow-up tasks).]"
+		}
 
 		req := agent.RunRequest{
 			SessionKey:       r.LeadSessionKey,
