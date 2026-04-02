@@ -19,10 +19,10 @@ func TestBase64DecodeShellDeny(t *testing.T) {
 	}
 
 	allowed := []string{
-		"base64 -w0 file.txt",       // encode, no pipe to shell
-		"base64 -d file.txt",        // decode without pipe to shell
-		"echo hello | base64",       // encode
-		"base64 --decode file.txt",  // decode without pipe to shell
+		"base64 -w0 file.txt",      // encode, no pipe to shell
+		"base64 -d file.txt",       // decode without pipe to shell
+		"echo hello | base64",      // encode
+		"base64 --decode file.txt", // decode without pipe to shell
 	}
 
 	for _, cmd := range denied {
@@ -98,7 +98,7 @@ func TestDestructiveOpsGaps(t *testing.T) {
 	)
 
 	mustAllow(t, patterns,
-		"halting the process",  // "halt" inside word
+		"halting the process", // "halt" inside word
 		"initialize",          // "init" inside word
 		"initial setup",       // "init" inside word
 		"init_db",             // no space+digit after init
@@ -420,6 +420,33 @@ func TestPathExemptions_MixedArgs(t *testing.T) {
 	if !denied {
 		t.Error("mixed-path command should be denied: /app/data/config.json is not exempt")
 	}
+}
+
+func TestDataExfiltrationHostPattern(t *testing.T) {
+	patterns := DenyGroupRegistry["data_exfiltration"].Patterns
+
+	mustDeny(t, patterns,
+		"nslookup example.com",
+		"dig example.com",
+		"dig +short example.com",
+		"host example.com",
+		"host -t MX example.com",
+		"; host example.com",
+		"&& host example.com",
+		"| host example.com",
+	)
+
+	mustAllow(t, patterns,
+		"mysql --host localhost -u root",
+		"node -e \"const host = process.env.DB_HOST\"",
+		"psql -h localhost",
+		"curl --host-header example.com http://1.2.3.4",
+		"hostname",
+		"hostnamectl",
+		"DB_HOST=localhost node migrate.js",
+		"echo $DB_HOST",
+		"export PGHOST=localhost",
+	)
 }
 
 func TestLimitedBuffer(t *testing.T) {

@@ -51,6 +51,19 @@ func IsSharedWorkspace(settings json.RawMessage) bool {
 	return s.WorkspaceScope == "shared"
 }
 
+func projectWorkspaceFromSettings(settings json.RawMessage) string {
+	if settings == nil {
+		return ""
+	}
+	var s struct {
+		Workspace string `json:"workspace"`
+	}
+	if json.Unmarshal(settings, &s) != nil {
+		return ""
+	}
+	return s.Workspace
+}
+
 // blockedExtensions lists executable file types that are not allowed in team workspaces.
 var blockedExtensions = map[string]bool{
 	".exe": true, ".sh": true, ".bat": true, ".cmd": true,

@@ -149,7 +149,11 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 		TeamLayer(team.ID),
 		UserChatLayer(chatID, shared),
 	)
-	taskMeta[TaskMetaTeamWorkspace] = teamWsDir
+	if projectWs := projectWorkspaceFromSettings(team.Settings); projectWs != "" {
+		taskMeta[TaskMetaTeamWorkspace] = projectWs
+	} else {
+		taskMeta[TaskMetaTeamWorkspace] = teamWsDir
+	}
 	// Auto-collect media files from current run to team workspace.
 	// When leader received files from user and creates a task, copy those
 	// files to the team workspace so members can access them via read_file.
