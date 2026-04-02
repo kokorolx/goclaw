@@ -18,26 +18,32 @@ import (
 )
 
 const (
-	defaultRecoveryInterval    = 5 * time.Minute
-	defaultStaleThreshold      = 2 * time.Hour
-	defaultInReviewThreshold   = 4 * time.Hour
-	followupCooldown           = 5 * time.Minute
-	defaultFollowupInterval    = 30 * time.Minute
+	defaultRecoveryInterval  = 5 * time.Minute
+	defaultStaleThreshold    = 2 * time.Hour
+	defaultInReviewThreshold = 4 * time.Hour
+	followupCooldown         = 5 * time.Minute
+	defaultFollowupInterval  = 30 * time.Minute
+	orphanedPendingThreshold = 10 * time.Minute
 )
 
-// TaskTicker periodically recovers stale tasks and re-dispatches pending work.
-// All recovery/stale/followup queries are batched across v2 active teams (single SQL each).
+type TaskDispatcher interface {
+	DispatchTaskToAgent(ctx context.Context, task *store.TeamTaskData, team *store.TeamData, agentID uuid.UUID)
+	CachedGetAgentByID(ctx context.Context, id uuid.UUID) (*store.AgentData, error)
+	Store() store.TeamStore
+}
+
 type TaskTicker struct {
-	teams    store.TeamStore
-	agents   store.AgentStore
-	msgBus   *bus.MessageBus
-	interval time.Duration
+	teams      store.TeamStore
+	agents     store.AgentStore
+	msgBus     *bus.MessageBus
+	interval   time.Duration
+	dispatcher TaskDispatcher
 
 	stopCh chan struct{}
 	wg     sync.WaitGroup
 
 	mu               sync.Mutex
-	lastFollowupSent map[uuid.UUID]time.Time // taskID → last followup sent time
+	lastFollowupSent map[uuid.UUID]time.Time
 }
 
 func NewTaskTicker(teams store.TeamStore, agents store.AgentStore, msgBus *bus.MessageBus, intervalSec int) *TaskTicker {
@@ -55,7 +61,10 @@ func NewTaskTicker(teams store.TeamStore, agents store.AgentStore, msgBus *bus.M
 	}
 }
 
-// Start launches the background recovery loop.
+func (t *TaskTicker) SetDispatcher(d TaskDispatcher) {
+	t.dispatcher = d
+}
+
 func (t *TaskTicker) Start() {
 	t.wg.Add(1)
 	go t.loop()
@@ -166,7 +175,12 @@ func (t *TaskTicker) recoverAll(forceRecover bool) {
 				"They are now pending and will be dispatched if assigned.")
 	}
 
-	// Step 6: Prune old cooldown entries to prevent memory leak.
+	// Step 6: Auto-dispatch orphaned pending tasks (have owner but were never dispatched).
+	if t.dispatcher != nil {
+		t.dispatchOrphanedPendingTasks(recoverCtx)
+	}
+
+	// Step 7: Prune old cooldown entries to prevent memory leak.
 	t.pruneCooldowns()
 }
 
@@ -381,6 +395,31 @@ func followupInterval(team store.TeamData) time.Duration {
 		}
 	}
 	return defaultFollowupInterval
+}
+
+func (t *TaskTicker) dispatchOrphanedPendingTasks(ctx context.Context) {
+	threshold := time.Now().Add(-orphanedPendingThreshold)
+	tasks, err := t.teams.ListOrphanedPendingTasks(ctx, threshold)
+	if err != nil {
+		slog.Warn("task_ticker: list orphaned pending tasks", "error", err)
+		return
+	}
+	if len(tasks) == 0 {
+		return
+	}
+	slog.Info("task_ticker: dispatching orphaned pending tasks", "count", len(tasks))
+	for i := range tasks {
+		task := &tasks[i]
+		if task.OwnerAgentID == nil {
+			continue
+		}
+		team, err := t.teams.GetTeam(ctx, task.TeamID)
+		if err != nil {
+			slog.Warn("task_ticker: orphan dispatch — get team failed", "task_id", task.ID, "error", err)
+			continue
+		}
+		t.dispatcher.DispatchTaskToAgent(ctx, task, team, *task.OwnerAgentID)
+	}
 }
 
 func (t *TaskTicker) pruneCooldowns() {

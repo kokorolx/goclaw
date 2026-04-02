@@ -473,6 +473,24 @@ func (s *SQLiteTeamStore) FixOrphanedBlockedTasks(ctx context.Context) ([]store.
 	return infos, nil
 }
 
+func (s *SQLiteTeamStore) ListOrphanedPendingTasks(ctx context.Context, olderThan time.Time) ([]store.TeamTaskData, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+taskSelectCols+`
+		 `+taskJoinClause+`
+		 WHERE t.status = ?
+		   AND t.owner_agent_id IS NOT NULL
+		   AND t.updated_at < ?
+		 ORDER BY t.priority DESC, t.created_at
+		 LIMIT 50`,
+		store.TeamTaskStatusPending, olderThan.UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTaskRows(rows)
+}
+
 // queryRecoveredTasks fetches recently-updated tasks matching the given status for recovery reporting.
 func (s *SQLiteTeamStore) queryRecoveredTasks(ctx context.Context, status string) ([]store.RecoveredTaskInfo, error) {
 	rows, err := s.db.QueryContext(ctx,

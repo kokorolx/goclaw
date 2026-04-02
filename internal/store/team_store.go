@@ -50,12 +50,11 @@ const (
 
 // Team task list filter constants (for ListTasks statusFilter parameter).
 const (
-	TeamTaskFilterActive    = "active" // pending + in_progress + blocked
+	TeamTaskFilterActive    = "active"    // pending + in_progress + blocked
 	TeamTaskFilterInReview  = "in_review" // only in_review tasks
 	TeamTaskFilterCompleted = "completed" // only completed tasks
 	TeamTaskFilterAll       = "all"       // all statuses (default when "" passed)
 )
-
 
 // TeamData represents an agent team.
 type TeamData struct {
@@ -106,17 +105,17 @@ type TeamTaskData struct {
 	Channel      string         `json:"channel,omitempty"`
 
 	// V2 fields
-	TaskType        string     `json:"task_type"`
-	TaskNumber      int        `json:"task_number,omitempty"`
-	Identifier      string     `json:"identifier,omitempty"`
+	TaskType         string     `json:"task_type"`
+	TaskNumber       int        `json:"task_number,omitempty"`
+	Identifier       string     `json:"identifier,omitempty"`
 	CreatedByAgentID *uuid.UUID `json:"created_by_agent_id,omitempty"`
-	AssigneeUserID  string     `json:"assignee_user_id,omitempty"`
-	ParentID        *uuid.UUID `json:"parent_id,omitempty"`
-	ChatID          string     `json:"chat_id,omitempty"`
-	LockedAt        *time.Time `json:"locked_at,omitempty"`
-	LockExpiresAt   *time.Time `json:"lock_expires_at,omitempty"`
-	ProgressPercent int        `json:"progress_percent,omitempty"`
-	ProgressStep    string     `json:"progress_step,omitempty"`
+	AssigneeUserID   string     `json:"assignee_user_id,omitempty"`
+	ParentID         *uuid.UUID `json:"parent_id,omitempty"`
+	ChatID           string     `json:"chat_id,omitempty"`
+	LockedAt         *time.Time `json:"locked_at,omitempty"`
+	LockExpiresAt    *time.Time `json:"lock_expires_at,omitempty"`
+	ProgressPercent  int        `json:"progress_percent,omitempty"`
+	ProgressStep     string     `json:"progress_step,omitempty"`
 
 	// Follow-up reminder fields
 	FollowupAt      *time.Time `json:"followup_at,omitempty"`
@@ -256,6 +255,7 @@ type TaskRecoveryStore interface {
 	MarkAllStaleTasks(ctx context.Context, olderThan time.Time) ([]RecoveredTaskInfo, error)
 	MarkInReviewStaleTasks(ctx context.Context, olderThan time.Time) ([]RecoveredTaskInfo, error)
 	FixOrphanedBlockedTasks(ctx context.Context) ([]RecoveredTaskInfo, error)
+	ListOrphanedPendingTasks(ctx context.Context, olderThan time.Time) ([]TeamTaskData, error)
 }
 
 // TaskFollowupStore manages follow-up reminder scheduling.
