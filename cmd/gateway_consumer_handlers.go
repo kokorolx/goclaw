@@ -136,6 +136,7 @@ func handleSubagentAnnounce(
 				return
 			}
 			slog.Error("subagent announce: agent run failed", "error", outcome.Err)
+			sendLLMErrorAlert(outcome.Err, origCh, chatID)
 			deps.MsgBus.PublishOutbound(bus.OutboundMessage{
 				Channel:  origCh,
 				ChatID:   chatID,
@@ -325,6 +326,7 @@ func handleTeammateMessage(
 		var announceMedia []agent.MediaResult
 		if outcome.Err != nil {
 			slog.Error("teammate message: agent run failed", "error", outcome.Err)
+			sendLLMErrorAlert(outcome.Err, origCh, origChatID)
 			errMsg := outcome.Err.Error()
 			if len(errMsg) > 500 {
 				errMsg = errMsg[:500] + "..."

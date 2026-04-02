@@ -493,6 +493,13 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (result *RunResult, 
 		if l.maxToolCalls > 0 && rs.totalToolCalls > l.maxToolCalls {
 			slog.Warn("security.tool_budget_exceeded",
 				"agent", l.id, "total", rs.totalToolCalls, "limit", l.maxToolCalls)
+			for _, tc := range resp.ToolCalls {
+				messages = append(messages, providers.Message{
+					Role:       "tool",
+					Content:    "[Tool call skipped — tool budget exceeded]",
+					ToolCallID: tc.ID,
+				})
+			}
 			messages = append(messages, providers.Message{
 				Role:    "user",
 				Content: fmt.Sprintf("[System] Tool call budget reached (%d/%d). Do NOT call any more tools. Summarize results so far and respond to the user.", rs.totalToolCalls, l.maxToolCalls),
@@ -678,20 +685,28 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (result *RunResult, 
 			// 5. Process results sequentially: emit events, append messages, save to session
 			// Note: tool span start/end already emitted inside goroutines above.
 			var loopStuck bool
-			for _, r := range collected {
-				// Record tool execution time for adaptive thresholds.
+			var deferredWarnings []providers.Message
+			var breakIdx int = -1
+			for i, r := range collected {
 				toolTiming.Record(r.tc.Name, time.Since(r.spanStart).Milliseconds())
-
-				// Process tool result: loop detection, events, media, deliverables.
 				toolMsg, warningMsgs, action := l.processToolResult(ctx, rs, &req, emitRun, r.tc, r.registryName, r.result, hadBootstrap)
 				messages = append(messages, toolMsg)
 				rs.pendingMsgs = append(rs.pendingMsgs, toolMsg)
-				messages = append(messages, warningMsgs...)
+				deferredWarnings = append(deferredWarnings, warningMsgs...)
 				if action == toolResultBreak {
 					loopStuck = true
+					breakIdx = i
 					break
 				}
 			}
+			if loopStuck && breakIdx >= 0 {
+				for _, r := range collected[breakIdx+1:] {
+					toolMsg, _, _ := l.processToolResult(ctx, rs, &req, emitRun, r.tc, r.registryName, r.result, hadBootstrap)
+					messages = append(messages, toolMsg)
+					rs.pendingMsgs = append(rs.pendingMsgs, toolMsg)
+				}
+			}
+			messages = append(messages, deferredWarnings...)
 
 			// Check read-only streak after processing all parallel results.
 			if !loopStuck {

@@ -135,8 +135,8 @@ func processAnnounceLoop(
 		content := buildMergedAnnounceContent(entries, snapshot, r.TeamWorkspace)
 		if allDirect {
 			content += "\n\n[The member already posted the result directly to the chat. Do NOT repeat or rephrase their work. " +
-				"However, you SHOULD still create follow-up tasks if your workflow requires it (e.g. code review gate, deployment gate, QA). " +
-				"If you have no follow-up tasks and no new information, respond with NO_REPLY.]"
+				"You MUST check if a follow-up task is needed (e.g. code review gate after dev completion, deployment gate, QA) and create it via team_tasks. " +
+				"Only respond with NO_REPLY if you have already confirmed no follow-up is required.]"
 		}
 
 		req := agent.RunRequest{
