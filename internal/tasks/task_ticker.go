@@ -399,7 +399,8 @@ func followupInterval(team store.TeamData) time.Duration {
 
 func (t *TaskTicker) dispatchOrphanedPendingTasks(ctx context.Context) {
 	threshold := time.Now().Add(-orphanedPendingThreshold)
-	tasks, err := t.teams.ListOrphanedPendingTasks(ctx, threshold)
+	xCtx := store.WithCrossTenant(ctx)
+	tasks, err := t.teams.ListOrphanedPendingTasks(xCtx, threshold)
 	if err != nil {
 		slog.Warn("task_ticker: list orphaned pending tasks", "error", err)
 		return
@@ -413,12 +414,12 @@ func (t *TaskTicker) dispatchOrphanedPendingTasks(ctx context.Context) {
 		if task.OwnerAgentID == nil {
 			continue
 		}
-		team, err := t.teams.GetTeam(ctx, task.TeamID)
-		if err != nil {
+		team, err := t.teams.GetTeam(xCtx, task.TeamID)
+		if err != nil || team == nil {
 			slog.Warn("task_ticker: orphan dispatch — get team failed", "task_id", task.ID, "error", err)
 			continue
 		}
-		t.dispatcher.DispatchTaskToAgent(ctx, task, team, *task.OwnerAgentID)
+		t.dispatcher.DispatchTaskToAgent(xCtx, task, team, *task.OwnerAgentID)
 	}
 }
 

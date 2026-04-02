@@ -217,17 +217,15 @@ func (s *PGTeamStore) FixOrphanedBlockedTasks(ctx context.Context) ([]store.Reco
 }
 
 func (s *PGTeamStore) ListOrphanedPendingTasks(ctx context.Context, olderThan time.Time) ([]store.TeamTaskData, error) {
-	tid := tenantIDForInsert(ctx)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.status = $1
 		   AND t.owner_agent_id IS NOT NULL
 		   AND t.updated_at < $2
-		   AND t.tenant_id = $3
 		 ORDER BY t.priority DESC, t.created_at
 		 LIMIT 50`,
-		store.TeamTaskStatusPending, olderThan, tid,
+		store.TeamTaskStatusPending, olderThan,
 	)
 	if err != nil {
 		return nil, err
