@@ -13,14 +13,14 @@ import (
 
 // Manager handles the Chrome browser lifecycle and page management.
 type Manager struct {
-	mu          sync.Mutex
-	browser     *rod.Browser
-	refs        *RefStore
-	pages       map[string]*rod.Page        // targetID → page
-	console     map[string][]ConsoleMessage // targetID → console messages
-	tenantCtxs  map[string]*rod.Browser     // tenantID → incognito browser context
-	pageTenants map[string]string           // targetID → tenantID (for filtering)
-	pageLastUsed map[string]time.Time       // targetID → last access time
+	mu            sync.Mutex
+	browser       *rod.Browser
+	refs          *RefStore
+	pages         map[string]*rod.Page        // targetID → page
+	console       map[string][]ConsoleMessage // targetID → console messages
+	tenantCtxs    map[string]*rod.Browser     // tenantID → incognito browser context
+	pageTenants   map[string]string           // targetID → tenantID (for filtering)
+	pageLastUsed  map[string]time.Time        // targetID → last access time
 	headless      bool
 	remoteURL     string        // CDP endpoint for remote Chrome (sidecar); skips local launcher
 	actionTimeout time.Duration // per-action context timeout (default 30s)
@@ -132,6 +132,9 @@ func (m *Manager) Start(ctx context.Context) error {
 			Set("disable-gpu").
 			Set("no-first-run").
 			Set("no-default-browser-check")
+		if p, ok := launcher.LookPath(); ok {
+			l = l.Bin(p)
+		}
 
 		u, err := l.Launch()
 		if err != nil {
